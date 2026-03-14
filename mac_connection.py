@@ -14,7 +14,7 @@ class MacConnection:
     """Manages SSH connection to a macOS machine."""
 
     def __init__(self, config_path: str = "config.json"):
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._client: Optional[paramiko.SSHClient] = None
         self._sftp: Optional[paramiko.SFTPClient] = None
 
