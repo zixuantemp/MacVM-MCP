@@ -37,7 +37,9 @@ class MacConnection:
                     "key_file": os.environ.get("MAC_SSH_KEY", None),
                     "timeout": 30,
                 },
-                "remote_work_dir": os.environ.get("MAC_REMOTE_DIR", "/tmp/macmcp"),
+                # B108: this is a path on the *remote* macOS target, not the
+                # local Kali host. /tmp/macmcp is namespaced for our use.
+                "remote_work_dir": os.environ.get("MAC_REMOTE_DIR", "/tmp/macmcp"),  # nosec B108
                 "local_work_dir": os.environ.get("MAC_LOCAL_DIR", "/home/kali/Desktop/analysis"),
             }
         else:
@@ -67,7 +69,9 @@ class MacConnection:
                 # Default RejectPolicy; AutoAdd only on explicit opt-in for
                 # first-time setup (TOFU is a deliberate user choice).
                 if os.environ.get("MAC_SSH_AUTO_ADD_HOSTKEY") == "1":
-                    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                    # B507: AutoAdd is opt-in for first-time host enrollment.
+                    # Default branch (RejectPolicy) is the secure path.
+                    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
                 else:
                     client.set_missing_host_key_policy(paramiko.RejectPolicy())
                 connect_kwargs = {
@@ -110,9 +114,16 @@ class MacConnection:
             return self._sftp
 
     def run(self, command: str, timeout: int = 60) -> Tuple[int, str, str]:
-        """Run a command via SSH. Returns (exit_code, stdout, stderr)."""
+        """Run a command via SSH. Returns (exit_code, stdout, stderr).
+
+        Security: callers MUST shell-quote untrusted input before passing it in
+        (server.py uses _sh()/shlex.quote() everywhere). This is the intended
+        remote-execution channel for the MCP server.
+        """
         client = self._get_client()
-        stdin, stdout, stderr = client.exec_command(command, timeout=timeout)
+        # B601: intentional remote command execution; sanitization is the
+        # caller's responsibility (see server.py _sh() helper).
+        stdin, stdout, stderr = client.exec_command(command, timeout=timeout)  # nosec B601
         exit_code = stdout.channel.recv_exit_status()
         out = stdout.read().decode("utf-8", errors="replace")
         err = stderr.read().decode("utf-8", errors="replace")
@@ -129,7 +140,8 @@ class MacConnection:
             return 1, "", "sudo password not configured (set MAC_SSH_PASSWORD or ssh.password)"
         client = self._get_client()
         full_cmd = f"sudo -S -p '' {command}"
-        stdin, stdout, stderr = client.exec_command(full_cmd, timeout=timeout)
+        # B601: same as run() — caller must shell-quote untrusted input.
+        stdin, stdout, stderr = client.exec_command(full_cmd, timeout=timeout)  # nosec B601
         try:
             stdin.write(pwd + "\n")
             stdin.flush()

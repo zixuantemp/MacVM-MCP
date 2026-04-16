@@ -879,7 +879,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             where = f" WHERE client LIKE '%{safe_id}%'"
         else:
             where = ""
-        query = f"SELECT service, client, auth_value, auth_reason FROM access{where}"
+        # B608: `where` is built only from alnum + .-_ chars; query string is
+        # also _sh()-quoted before reaching the shell.
+        query = f"SELECT service, client, auth_value, auth_reason FROM access{where}"  # nosec B608
         cmd = (
             f"sqlite3 {_sh(user_tcc)} {_sh(query)} 2>/dev/null | head -50; "
             f"echo '--- System TCC ---'; "
@@ -1042,7 +1044,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         return _ok("\n\n".join(results))
 
     elif name == "take_screenshot":
-        local_path = arguments.get("local_save_path", "/tmp/mac_screenshot.png")
+        import tempfile
+        default_local = os.path.join(tempfile.gettempdir(), "mac_screenshot.png")
+        local_path = arguments.get("local_save_path", default_local)
         workdir = c.remote_work_dir
         c.run(f"mkdir -p {_sh(workdir)}")
         remote_path = f"{workdir}/screenshot_{int(time.time())}.png"
