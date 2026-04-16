@@ -288,3 +288,8 @@ Interceptor.attach(
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+**Last Updated**: 2026-04-17
+**Version**: 1.0.0
