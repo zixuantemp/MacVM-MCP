@@ -1,10 +1,11 @@
 {
+  "_comment": "Prefer SSH key authentication. Leave password as null and point key_file at your private key. If you must use a password, set MAC_SSH_PASSWORD in the environment instead of storing it here.",
   "ssh": {
     "host": "192.168.1.100",
     "port": 22,
     "username": "analyst",
-    "password": "password",
-    "key_file": null,
+    "password": null,
+    "key_file": "~/.ssh/id_ed25519",
     "timeout": 30
   },
   "remote_work_dir": "/tmp/macmcp",

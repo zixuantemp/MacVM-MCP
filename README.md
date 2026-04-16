@@ -1,7 +1,65 @@
-# MacMCP — macOS Analysis MCP Server
+# MacVM-MCP — macOS Analysis MCP Server
 
 A Model Context Protocol (MCP) server for macOS security research and malware analysis.
-Connects to a macOS machine via SSH and exposes 39 tools equivalent to FlareVM MCP but for macOS.
+Connects to a macOS machine via SSH and exposes 40+ tools, 4 composite playbooks, 5 prompts, and 5 resources for end-to-end mac threat triage.
+
+## Quick Install
+
+**One-liner (interactive):**
+```bash
+git clone https://github.com/zixuantemp/MacVM-MCP && cd MacVM-MCP && bash install.sh
+```
+
+**pip:**
+```bash
+pip install -e .
+cp config.json.example config.json && $EDITOR config.json
+macvm-mcp                       # console script (project.scripts)
+```
+
+**Docker:**
+```bash
+docker build -t macvm-mcp .
+docker run -i --rm -v $PWD/config.json:/app/config.json:ro macvm-mcp
+```
+
+The `install.sh` script creates a venv, prompts for SSH host/user/key, generates `config.json`, tests the connection, and prints a ready-to-paste MCP client snippet.
+
+## Composite Playbooks (Automated Analysis)
+
+Four one-shot tools that run a whole workflow and return a structured markdown report:
+
+| Tool | What it does |
+|------|--------------|
+| `triage_full` | Hashes + Mach-O + security strings + signing + entitlements + quarantine + Gatekeeper |
+| `behavioral_full` | Persistence baseline → tcpdump + fs_usage → execute → diff persistence → IOCs |
+| `app_bundle_full_audit` | Info.plist, signing, entitlements, helpers, dylibs, hashes of every bundled binary |
+| `incident_response_scan` | Persistence + kexts + TCC + SIP + live network + suspicious procs + filters |
+
+## MCP Capabilities
+
+**Prompts** (5): `triage_macos_sample`, `analyze_app_bundle`, `mac_persistence_check`, `mac_incident_response`, `pkg_installer_audit`.
+
+**Resources** (5):
+- `mac://system/info` — live snapshot of the target
+- `mac://persistence/locations` — every macOS persistence path
+- `mac://docs/cheatsheet` — common mac analysis commands
+- `mac://docs/frida-snippets` — drop-in JS hooks for NSURLSession/CommonCrypto/NSTask/etc.
+- `mac://status/connection` — current SSH state
+
+**Skills** (3): drop into your Claude Code config under `skills/` — `triage-macos-malware`, `audit-app-bundle`, `macos-incident-response`.
+
+## Security Improvements (1.0)
+
+This release fixed three critical issues — see [`SECURITY.md`](SECURITY.md) for the full audit.
+
+1. **Shell-injection** in ~30 sites (every f-string interpolating user-controlled paths/filters/patterns) — fixed via `shlex.quote`-based `_sh()` helper.
+2. **Sudo password leak** — `echo '<pwd>' | sudo -S` exposed the password in `ps`. Replaced with stdin-fed `sudo -S -p ''`.
+3. **TOFU host-key trust** — `paramiko.AutoAddPolicy` swapped for `RejectPolicy`; honours `~/.ssh/known_hosts`. Set `MAC_SSH_AUTO_ADD_HOSTKEY=1` for first-time setup only.
+
+**Recommendation:** use SSH key authentication. Leave `password` as `null` in `config.json` and set `key_file`. If you must use a password, prefer the `MAC_SSH_PASSWORD` env var over committing it to disk.
+
+---
 
 ## Architecture
 
@@ -226,3 +284,7 @@ Interceptor.attach(
 | `x64dbg_load` | `lldb_run_commands` |
 | `process_hacker_info` | `inspect_process` |
 | `take_screenshot` | `take_screenshot` |
+
+## License
+
+MIT — see [LICENSE](LICENSE).

@@ -1,8 +1,15 @@
-"""SSH connection manager for macOS target."""
+"""SSH connection manager for macOS target.
+
+Security model:
+- Host keys are verified against ~/.ssh/known_hosts by default (RejectPolicy).
+  Set MAC_SSH_AUTO_ADD_HOSTKEY=1 to enable AutoAddPolicy for first-time setup.
+- Sudo passwords are sent via stdin (never visible in remote process listings).
+- SSH agent / key file authentication is preferred over passwords. Passwords
+  in config.json should be considered a last resort.
+"""
 
 import json
 import os
-import stat
 import threading
 from pathlib import Path
 from typing import Optional, Tuple
@@ -50,7 +57,19 @@ class MacConnection:
             ssh_cfg = self.config["ssh"]
             if self._client is None or not self._is_connected():
                 client = paramiko.SSHClient()
-                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                # Load known_hosts for host key verification (mitigates MITM).
+                known_hosts = os.path.expanduser("~/.ssh/known_hosts")
+                if os.path.exists(known_hosts):
+                    try:
+                        client.load_host_keys(known_hosts)
+                    except Exception:
+                        pass
+                # Default RejectPolicy; AutoAdd only on explicit opt-in for
+                # first-time setup (TOFU is a deliberate user choice).
+                if os.environ.get("MAC_SSH_AUTO_ADD_HOSTKEY") == "1":
+                    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                else:
+                    client.set_missing_host_key_policy(paramiko.RejectPolicy())
                 connect_kwargs = {
                     "hostname": ssh_cfg["host"],
                     "port": ssh_cfg["port"],
@@ -100,10 +119,26 @@ class MacConnection:
         return exit_code, out, err
 
     def run_sudo(self, command: str, password: str = "", timeout: int = 60) -> Tuple[int, str, str]:
-        """Run command with sudo."""
-        pwd = password or self.config["ssh"].get("password", "")
-        full_cmd = f"echo '{pwd}' | sudo -S {command}"
-        return self.run(full_cmd, timeout=timeout)
+        """Run command with sudo.
+
+        Password is delivered via stdin (-S) — never appears in the remote
+        process listing. -p '' suppresses the prompt to keep stdout clean.
+        """
+        pwd = password or os.environ.get("MAC_SSH_PASSWORD") or self.config["ssh"].get("password", "")
+        if not pwd:
+            return 1, "", "sudo password not configured (set MAC_SSH_PASSWORD or ssh.password)"
+        client = self._get_client()
+        full_cmd = f"sudo -S -p '' {command}"
+        stdin, stdout, stderr = client.exec_command(full_cmd, timeout=timeout)
+        try:
+            stdin.write(pwd + "\n")
+            stdin.flush()
+        except OSError:
+            pass
+        exit_code = stdout.channel.recv_exit_status()
+        out = stdout.read().decode("utf-8", errors="replace")
+        err = stderr.read().decode("utf-8", errors="replace")
+        return exit_code, out, err
 
     def upload_file(self, local_path: str, remote_path: str) -> None:
         """Upload a file to the macOS machine."""
