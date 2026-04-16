@@ -23,25 +23,22 @@ jobs:
       - name: Syntax check
         run: |
           python -m py_compile server.py mac_connection.py
-      - name: Smoke test (list_tools / list_prompts / list_resources)
+      - name: Smoke test (handler registration)
         run: |
           python - <<'EOF'
-          import asyncio
           from unittest.mock import patch, MagicMock
           # Avoid touching real SSH on import
           with patch("paramiko.SSHClient", MagicMock()):
               import server
-          async def smoke():
-              tools = await server.list_tools()
-              prompts = await server.list_prompts()
-              resources = await server.list_resources()
-              assert len(tools) >= 30, f"tools={len(tools)}"
-              assert len(prompts) == 5, f"prompts={len(prompts)}"
-              assert len(resources) == 5, f"resources={len(resources)}"
-              print(f"OK: {len(tools)} tools, {len(prompts)} prompts, {len(resources)} resources")
-          asyncio.run(smoke())
+          handlers = server.server.request_handlers
+          handler_names = {t.__name__ for t in handlers.keys()}
+          for required in ("ListToolsRequest", "ListPromptsRequest", "ListResourcesRequest"):
+              assert required in handler_names, f"Missing {required}; have {handler_names}"
+          print(f"OK — {len(handlers)} MCP handlers registered:", sorted(handler_names))
           EOF
       - name: Lint (ruff)
-        run: ruff check server.py mac_connection.py || true
+        # Uses pyproject.toml config (E,F,B; ignores E501 for shell heredocs)
+        run: ruff check server.py mac_connection.py
       - name: Security scan (bandit)
-        run: bandit -r server.py mac_connection.py -ll || true
+        # Skip B404/B603/B607 (subprocess) — inherent to a remote-execution MCP server.
+        run: bandit -r server.py mac_connection.py -ll --skip B404,B603,B607

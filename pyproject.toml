@@ -36,3 +36,14 @@ Repository = "https://github.com/zixuantemp/MacVM-MCP"
 
 [tool.setuptools]
 py-modules = ["server", "mac_connection"]
+
+[tool.ruff]
+line-length = 200
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "B"]
+# E501 ignored because the server has many embedded shell heredocs that
+# cannot be wrapped without breaking the script.
+ignore = ["E501"]
+
